@@ -6,6 +6,7 @@ import configparser
 
 def search_data(sequence_length, num_of_depend, label_start_idx,
                 num_for_predict, units, points_per_hour):
+    # 采样数据，输入数据的长度，预测数据的长度，预测数据的起始位置，预测数据的长度，采样的单位，每小时的采样点数
     '''
     Parameters
     ----------
@@ -27,9 +28,12 @@ def search_data(sequence_length, num_of_depend, label_start_idx,
         return None
 
     x_idx = []
+    #选取过去多长时间作为训练数据
     for i in range(1, num_of_depend + 1):
         start_idx = label_start_idx - points_per_hour * units * i
+        #训练数据开始:从points_per_hour * units * i开始
         end_idx = start_idx + num_for_predict
+        #训练数据结束:从points_per_hour * units * i + num_for_predict结束
         if start_idx >= 0:
             x_idx.append((start_idx, end_idx))
         else:
@@ -44,18 +48,9 @@ def search_data(sequence_length, num_of_depend, label_start_idx,
 def get_sample_indices(data_sequence, num_of_weeks, num_of_days, num_of_hours,
 
                        label_start_idx, num_for_predict, points_per_hour=12):
-    """
-    提取出每个片段对应的week,day,recent，每个片段是Y，对应的recent等，一起作为X
-    :param data_sequence: 读取的全部图矩阵数据
-    :param num_of_weeks:
-    :param num_of_days:
-    :param num_of_hours:
-    :param label_start_idx: 第一个可以作为训练测试样本的数据开始index
-    :param num_for_predict:
-    :param points_per_hour:
-    :return: 返回一个target对应的周数据、天数据、最近数据
-    week_sample=[12,307,3], day_sample=[12,307,3], hour_sample=[12*3,307,3], target=[12.307.3]
-    """
+
+    # 组织每个samle的数据
+
     week_sample, day_sample, hour_sample = None, None, None
 
     if label_start_idx + num_for_predict > data_sequence.shape[0]:
@@ -92,42 +87,17 @@ def get_sample_indices(data_sequence, num_of_weeks, num_of_days, num_of_hours,
                                       for i, j in hour_indices], axis=0)
 
     target = data_sequence[label_start_idx: label_start_idx + num_for_predict]
-    # print('获取每个片段对应的关联片段，week,day,recent：')
-    # print('currint index:', label_start_idx)
-    # print('week_indices:', week_indices)
-    # print('day_indices:', day_indices)
-    # print('hour_indices:', hour_indices)
-    # print(' ')
-    # print('week_sample:', week_sample.shape)
-    # print('day_sample:', day_sample.shape)
-    # print('hour_sample:', hour_sample.shape)
-    # print('target:', target.shape)
-    return week_sample, day_sample, hour_sample, target
 
+    return week_sample, day_sample, hour_sample, target
 
 def read_and_generate_dataset(graph_signal_matrix_filename,
                                                      num_of_weeks, num_of_days,
                                                      num_of_hours, num_for_predict,
                                                      points_per_hour=12, save=False):
-    '''
-    图信号矩阵文件进行处理，提取出模型需要的X,Y，最后返回一个dict，包含训练集、验证集、测试集，每部分的均值方差数
-    key=train,value={week:[];day:[];recent:[];target:[]}
-    :param graph_signal_matrix_filename: 图矩阵文件
-    :param num_of_weeks: 自定义关联周数
-    :param num_of_days: 自定义关联天数
-    :param num_of_hours: 自定义关进最近小时数
-    :param num_for_predict: 自定义预测周期，12就是一小时
-    :param points_per_hour: 图数据文件决定。一小时有12次数据
-    :param merge: 是否合并训练集和验证集共同训练模型，最终数据按照6：2：2 划为训练集、验证集、测试集三部分，
-    若mergr=Ture，用于训练的training_set=训练集+验证集，validation_set=验证集（不变）
-    :return: dict，返回进行标准化的数据，以及标准化用到的均值和方差
-    '''
 
-    # 加载.npz文件，图信号数据文件 pems04.npz，返回的是一个'numpy.array'
+ # 组织数据成多个samples
+
     data_seq = np.load(graph_signal_matrix_filename)['data']
-
-
-
     all_samples = []
     for idx in range(data_seq.shape[0]):
         sample = get_sample_indices(data_seq, num_of_weeks, num_of_days,
@@ -152,7 +122,10 @@ def read_and_generate_dataset(graph_signal_matrix_filename,
             hour_sample = np.expand_dims(hour_sample, axis=0).transpose((0, 2, 3, 1))  # (1,N,F,T)
             sample.append(hour_sample)
 
-        target = np.expand_dims(target, axis=0).transpose((0, 2, 3, 1))[:, :, 0, :]  # (1,N,T)
+
+        #提取最后一个维度的数据作为target
+        target = np.expand_dims(target, axis=0).transpose((0, 2, 3, 1))[:, :, -1, :]  # (1,N,T)
+
         sample.append(target)
 
         time_sample = np.expand_dims(np.array([idx]), axis=0)  # (1,1)
@@ -173,6 +146,7 @@ def read_and_generate_dataset(graph_signal_matrix_filename,
                       for i in zip(*all_samples[split_line1: split_line2])]
     testing_set = [np.concatenate(i, axis=0)
                    for i in zip(*all_samples[split_line2:])]
+
 
     train_x = np.concatenate(training_set[:-2], axis=-1)  # (B,N,F,T')
     val_x = np.concatenate(validation_set[:-2], axis=-1)
@@ -291,11 +265,6 @@ else:
     id_filename = None
 
 
-
-
-#########################以下为函数调用
-
-
 num_of_vertices = int(data_config['num_of_vertices'])
 points_per_hour = int(data_config['points_per_hour'])
 num_for_predict = int(data_config['num_for_predict'])
@@ -312,7 +281,6 @@ data = np.load(graph_signal_matrix_filename)
 data['data'].shape
 
 all_data = read_and_generate_dataset(graph_signal_matrix_filename, 0, 0, num_of_hours, num_for_predict, points_per_hour=points_per_hour, save=True)
-# 将全部图数据进行处理，整理出能用于训练的(X,Y)，Y即能找到其关联的周、天、小时数据的序列片段
 
 
 

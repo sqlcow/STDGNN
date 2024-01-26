@@ -15,12 +15,14 @@ print(f'Reading configuration file {args.config} was successful!')
 if_2D=config.get('2D_data','if_2D')
 if if_2D=='True':
     print("You choose the prepareData2D")
-    prepareData2D=prepareData2D(config.get('2D_data','2Dgraph_signal_matrix_filename'),
-    config.get('2D_data', 'num_of_hours'),
-    config.get('2D_data','num_of_days'),
-    config.get('2D_data','num_of_weeks'),
-    config.get('2D_data', 'num_of_months'),
-    config.get('2D_data', 'num_of_years'),config.get('2D_data', 'end_of_months'))
+    prepareData2D=prepareData2D(
+        config.get('2D_data','2Dgraph_signal_matrix_filename'),
+        config.get('2D_data', 'num_of_hours'),
+        config.get('2D_data','num_of_days'),
+        config.get('2D_data','num_of_weeks'),
+        config.get('2D_data', 'num_of_months'),
+        config.get('2D_data', 'num_of_years'),
+        config.get('2D_data', 'end_of_months'))
     fuck_file_name=prepareData2D.prepareData2D()
 
 else:

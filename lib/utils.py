@@ -140,7 +140,7 @@ def cheb_polynomial(L_tilde, K):
 def load_graphdata_channel1(graph_signal_matrix_filename, num_of_hours, num_of_days, num_of_weeks, DEVICE, batch_size, shuffle=True):
     '''
     这个是为PEMS的数据准备的函数
-    将x,y都处理成归一化到[-1,1]之前的数据;
+    将x,y都处理成归一化到[-1,1]之间的数据;
     每个样本同时包含所有监测点的数据，所以本函数构造的数据输入时空序列预测模型；
     该函数会把hour, day, week的时间串起来；
     注： 从文件读入的数据，x是最大最小归一化的，但是y是真实值
@@ -170,19 +170,19 @@ def load_graphdata_channel1(graph_signal_matrix_filename, num_of_hours, num_of_d
 
     file_data = np.load(filename + '.npz')
     train_x = file_data['train_x']  # (10181, 307, 3, 12)
-    train_x = train_x[:, :, 0:1, :]
+    train_x = train_x[:, :, 0:8, :]
     train_target = file_data['train_target']  # (10181, 307, 12)
 
     val_x = file_data['val_x']
-    val_x = val_x[:, :, 0:1, :]
+    val_x = val_x[:, :, 0:8, :]
     val_target = file_data['val_target']
 
     test_x = file_data['test_x']
-    test_x = test_x[:, :, 0:1, :]
+    test_x = test_x[:, :, 0:8, :]
     test_target = file_data['test_target']
 
-    mean = file_data['mean'][:, :, 0:1, :]  # (1, 1, 3, 1)
-    std = file_data['std'][:, :, 0:1, :]  # (1, 1, 3, 1)
+    mean = file_data['mean'][:, :, 0:8, :]  # (1, 1, 3, 1)
+    std = file_data['std'][:, :, 0:8, :]  # (1, 1, 3, 1)
 
     # ------- train_loader -------
     train_x_tensor = torch.from_numpy(train_x).type(torch.FloatTensor).to(DEVICE)  # (B, N, F, T)

@@ -99,6 +99,7 @@ class Temporal_Attention_layer(nn.Module):
         self.be = nn.Parameter(torch.FloatTensor(1, num_of_timesteps, num_of_timesteps).to(DEVICE))
         self.Ve = nn.Parameter(torch.FloatTensor(num_of_timesteps, num_of_timesteps).to(DEVICE))
 
+
     def forward(self, x):
         '''
         :param x: (batch_size, N, F_in, T)
@@ -191,9 +192,13 @@ class ASTGCN_block(nn.Module):
         '''
         batch_size, num_of_vertices, num_of_features, num_of_timesteps = x.shape
 
+        last_feature = x[:, :, -1, :]
+        # 保留维度
+        last_feature = last_feature.unsqueeze(2)
         # TAt
         temporal_At = self.TAt(x)  # (b, T, T)
 
+        # temporal_At (b, T, T) # x_TAt (b,N,F,T)
         x_TAt = torch.matmul(x.reshape(batch_size, -1, num_of_timesteps), temporal_At).reshape(batch_size, num_of_vertices, num_of_features, num_of_timesteps)
 
         # SAt

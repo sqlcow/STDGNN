@@ -5,6 +5,12 @@ import torch.nn.functional as F
 from torch.nn import MultiheadAttention
 from lib.utils import scaled_Laplacian, cheb_polynomial
 import math
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
+from einops import rearrange, repeat
+
+
 
 class Spatial_Attention_layer(nn.Module):
     '''
@@ -179,6 +185,7 @@ class ASTGCN_block(nn.Module):
 
     def __init__(self, DEVICE, in_channels, K, nb_chev_filter, nb_time_filter, time_strides, cheb_polynomials, num_of_vertices, num_of_timesteps):
         super(ASTGCN_block, self).__init__()
+        self.self_attention = TwoStageAttentionLayer(1, 10, 512, 8, dropout=0.0)
         self.TAt = Temporal_Attention_layer(DEVICE, in_channels, num_of_vertices, num_of_timesteps)
         self.SAt = Spatial_Attention_layer(DEVICE, in_channels, num_of_vertices, num_of_timesteps)
         self.cheb_conv_SAt = cheb_conv_withSAt(K, cheb_polynomials, in_channels, nb_chev_filter)
@@ -186,32 +193,48 @@ class ASTGCN_block(nn.Module):
         self.residual_conv = nn.Conv2d(in_channels, nb_time_filter, kernel_size=(1, 1), stride=(1, time_strides))
         self.ln = nn.LayerNorm(nb_time_filter)  #需要将channel放到最后一个维度上
         self.DEVICE = DEVICE
+        self.linear = nn.Linear(in_channels, 512)
+        self.linear2 = nn.Linear(512, in_channels)
     def forward(self, x):
         '''
         :param x: (batch_size, N, F_in, T)
         :return: (batch_size, N, nb_time_filter, T)
         '''
         batch_size, num_of_vertices, num_of_features, num_of_timesteps = x.shape
-        self.attn = MultiheadAttention(embed_dim=num_of_features, num_heads=1)
-        # 把attn模型放到GPU上
-        self.attn.to(self.DEVICE)
-        # 保留维度
-        # last_feature = x[:, :, -1, :]
-        # last_feature = last_feature.unsqueeze(2)
-        # # TAt
-        # 多头注意力层
-        # 注意力交互
-        x= x.permute(0, 1, 3,2).reshape((batch_size, num_of_vertices * num_of_timesteps, num_of_features))
-        output, _ = self.attn(x,x,x)
-        x=output.view(batch_size, num_of_vertices, num_of_timesteps, num_of_features)
-        x=x.permute(0, 1, 3, 2)
 
-        temporal_At = self.TAt(x)  #
-        # temporal_At (b, T, T) # x_TAt (b,N,F,T)
-        x_TAt = torch.matmul(x.reshape(batch_size, -1, num_of_timesteps), temporal_At).reshape(batch_size, num_of_vertices, num_of_features, num_of_timesteps)
+
+        # self.attn = MultiheadAttention(embed_dim=num_of_features, num_heads=1)
+        # # 把attn模型放到GPU上
+        # self.attn.to(self.DEVICE)
+        # # 保留维度
+        # # last_feature = x[:, :, -1, :]
+        # # last_feature = last_feature.unsqueeze(2)
+        # # # TAt
+        # # 多头注意力层
+        # # 注意力交互
+        #
+        # # 在第二个轴上循环取出三维数组然后进行维度交互
+        x = x.permute(0, 1, 3, 2)
+        x = self.linear(x)
+        output_list = []
+
+        for i in range(num_of_vertices):
+            data = x[:, i, :, :]
+            data = torch.unsqueeze(data, dim=2)
+            output = self.self_attention(data)
+            output_list.append(output)
+        # 重新堆叠成四维数组
+        output = torch.stack(output_list, dim=1)
+        x=output.view(batch_size, num_of_vertices, num_of_timesteps, 512)
+        x=x.squeeze(dim=-2)
+        x=self.linear2(x)
+        x = x.permute(0, 1, 3, 2)
+        # temporal_At = self.TAt(x)  #
+        # # 时间注意力层输入的是(22,638,8,12) 输出的是(22,638,8,12)
+        # x_TAt = torch.matmul(x.reshape(batch_size, -1, num_of_timesteps), temporal_At).reshape(batch_size, num_of_vertices, num_of_features, num_of_timesteps)
 
         # SAt
-        spatial_At = self.SAt(x_TAt)
+        spatial_At = self.SAt(x)
 
         # cheb gcn
         spatial_gcn = self.cheb_conv_SAt(x, spatial_At)  # (b,N,F,T)
@@ -298,34 +321,147 @@ def make_model(DEVICE, nb_block, in_channels, K, nb_chev_filter, nb_time_filter,
     return model
 
 
-class Dimension_attn(nn.Module):
-    def __init__(self, DEVICE, in_channels, num_of_vertices, num_of_timesteps):
-        super(Dimension_attn, self).__init__()
-        self.U1 = nn.Parameter(torch.FloatTensor(num_of_vertices).to(DEVICE))
-        self.U2 = nn.Parameter(torch.FloatTensor(in_channels, num_of_vertices).to(DEVICE))
-        self.U3 = nn.Parameter(torch.FloatTensor(in_channels).to(DEVICE))
-        self.Ve = nn.Parameter(torch.FloatTensor(num_of_timesteps, num_of_timesteps).to(DEVICE))
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
+from einops import rearrange, repeat
+import numpy as np
+
+from math import sqrt
+
+
+class FullAttention(nn.Module):
+    '''
+    The Attention operation
+    '''
+
+    def __init__(self, scale=None, attention_dropout=0.1):
+        super(FullAttention, self).__init__()
+        self.scale = scale
+        self.dropout = nn.Dropout(attention_dropout)
+
+    def forward(self, queries, keys, values):
+        B, L, H, E = queries.shape
+        _, S, _, D = values.shape
+        scale = self.scale or 1. / sqrt(E)
+
+        scores = torch.einsum("blhe,bshe->bhls", queries, keys)
+        A = self.dropout(torch.softmax(scale * scores, dim=-1))
+        V = torch.einsum("bhls,bshd->blhd", A, values)
+
+        return V.contiguous()
+
+
+class AttentionLayer(nn.Module):
+    '''
+    The Multi-head Self-Attention (MSA) Layer
+    '''
+
+    def __init__(self, d_model, n_heads, d_keys=None, d_values=None, dropout=0.1):
+        super(AttentionLayer, self).__init__()
+
+        d_keys = d_keys or (d_model // n_heads)
+        d_values = d_values or (d_model // n_heads)
+
+        self.inner_attention = FullAttention(scale=None, attention_dropout=dropout)
+        self.query_projection = nn.Linear(d_model, d_keys * n_heads)
+        self.key_projection = nn.Linear(d_model, d_keys * n_heads)
+        self.value_projection = nn.Linear(d_model, d_values * n_heads)
+        self.out_projection = nn.Linear(d_values * n_heads, d_model)
+        self.n_heads = n_heads
+
+    def forward(self, queries, keys, values):
+        B, L, _ = queries.shape
+        _, S, _ = keys.shape
+        H = self.n_heads
+
+        queries = self.query_projection(queries).view(B, L, H, -1)
+        keys = self.key_projection(keys).view(B, S, H, -1)
+        values = self.value_projection(values).view(B, S, H, -1)
+
+        out = self.inner_attention(
+            queries,
+            keys,
+            values,
+        )
+
+        out = out.view(B, L, -1)
+
+        return self.out_projection(out)
+
+
+class TwoStageAttentionLayer(nn.Module):
+    '''
+    The Two Stage Attention (TSA) Layer
+    input/output shape: [batch_size, Data_dim(D), Seg_num(L), d_model]
+    '''
+
+    def __init__(self, seg_num, factor, d_model, n_heads, d_ff=None, dropout=0.1):
+        super(TwoStageAttentionLayer, self).__init__()
+        d_ff = d_ff or 4 * d_model
+        self.time_attention = AttentionLayer(d_model, n_heads, dropout=dropout)
+        self.dim_sender = AttentionLayer(d_model, n_heads, dropout=dropout)
+        self.dim_receiver = AttentionLayer(d_model, n_heads, dropout=dropout)
+        self.router = nn.Parameter(torch.randn(seg_num, factor, d_model))
+
+        self.dropout = nn.Dropout(dropout)
+
+        self.norm1 = nn.LayerNorm(d_model)
+        self.norm2 = nn.LayerNorm(d_model)
+        self.norm3 = nn.LayerNorm(d_model)
+        self.norm4 = nn.LayerNorm(d_model)
+
+        self.MLP1 = nn.Sequential(nn.Linear(d_model, d_ff),
+                                  nn.GELU(),
+                                  nn.Linear(d_ff, d_model))
+        self.MLP2 = nn.Sequential(nn.Linear(d_model, d_ff),
+                                  nn.GELU(),
+                                  nn.Linear(d_ff, d_model))
 
     def forward(self, x):
-        '''
-        :param x: (batch_size, N, F_in, T)
-        :return: (B, T, T)
-        '''
-        _, num_of_vertices, num_of_features, num_of_timesteps = x.shape
+        # Cross Time Stage: Directly apply MSA to each dimension
+        batch = x.shape[0]
+        time_in = rearrange(x, 'b ts_d seg_num d_model -> (b ts_d) seg_num d_model')
+        time_enc = self.time_attention(
+            time_in, time_in, time_in
+        )
+        dim_in = time_in + self.dropout(time_enc)
+        dim_in = self.norm1(dim_in)
+        dim_in = dim_in + self.dropout(self.MLP1(dim_in))
+        dim_in = self.norm2(dim_in)
 
-        lhs = torch.matmul(torch.matmul(x.permute(0, 3, 2, 1), self.U1), self.U2)
-        # x:(B, N, F_in, T) -> (B, T, F_in, N)
-        # (B, T, F_in, N)(N) -> (B,T,F_in)
-        # (B,T,F_in)(F_in,N)->(B,T,N)
+        # Cross Dimension Stage: use a small set of learnable vectors to aggregate and distribute messages to build the D-to-D connection
+        dim_send = rearrange(dim_in, '(b ts_d) seg_num d_model -> (b seg_num) ts_d d_model', b=batch)
+        batch_router = repeat(self.router, 'seg_num factor d_model -> (repeat seg_num) factor d_model', repeat=batch)
 
-        rhs = torch.matmul(self.U3, x)  # (F)(B,N,F,T)->(B, N, T)
+        dim_buffer = self.dim_sender(batch_router, dim_send, dim_send)
+        dim_receive = self.dim_receiver(dim_send, dim_buffer, dim_buffer)
+        dim_enc = dim_send + self.dropout(dim_receive)
+        dim_enc = self.norm3(dim_enc)
+        dim_enc = dim_enc + self.dropout(self.MLP2(dim_enc))
+        dim_enc = self.norm4(dim_enc)
 
-        product = torch.matmul(lhs, rhs)  # (B,T,N)(B,N,T)->(B,T,T)
+        final_out = rearrange(dim_enc, '(b seg_num) ts_d d_model -> b ts_d seg_num d_model', b=batch)
 
-        E = torch.matmul(self.Ve, torch.sigmoid(product + self.be))  # (B, T, T)
+        return final_out
 
-        E_normalized = F.softmax(E, dim=1)
+class DSW_embedding(nn.Module):
+    def __init__(self, seg_len, d_model):
+        super(DSW_embedding, self).__init__()
+        self.seg_len = seg_len
 
-        return E_normalized
+        self.linear = nn.Linear(seg_len, d_model)
 
+    def forward(self, x):
+        batch, ts_len, ts_dim = x.shape
+        # x (32,168,7)
+        # x_segment (6272,6)
+        # x_embed after linear (6272,256)
+        # x_embed (32,7,28,256)
 
+        x_segment = rearrange(x, 'b (seg_num seg_len) d -> (b d seg_num) seg_len', seg_len = self.seg_len)
+        x_embed = self.linear(x_segment)
+        print(x_embed.shape)
+        x_embed = rearrange(x_embed, '(b d seg_num) d_model -> b d seg_num d_model', b = batch, d = ts_dim)
+        print(x_embed.shape)
+        return x_embed

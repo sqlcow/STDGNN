@@ -185,23 +185,26 @@ class ASTGCN_block(nn.Module):
         self.time_conv = nn.Conv2d(nb_chev_filter, nb_time_filter, kernel_size=(1, 3), stride=(1, time_strides), padding=(0, 1))
         self.residual_conv = nn.Conv2d(in_channels, nb_time_filter, kernel_size=(1, 1), stride=(1, time_strides))
         self.ln = nn.LayerNorm(nb_time_filter)  #需要将channel放到最后一个维度上
-        self.attn = MultiheadAttention(embed_dim=8, num_heads=1)
+        self.DEVICE = DEVICE
     def forward(self, x):
         '''
         :param x: (batch_size, N, F_in, T)
         :return: (batch_size, N, nb_time_filter, T)
         '''
         batch_size, num_of_vertices, num_of_features, num_of_timesteps = x.shape
-
+        self.attn = MultiheadAttention(embed_dim=num_of_features, num_heads=1)
+        # 把attn模型放到GPU上
+        self.attn.to(self.DEVICE)
         # 保留维度
         # last_feature = x[:, :, -1, :]
         # last_feature = last_feature.unsqueeze(2)
         # # TAt
         # 多头注意力层
         # 注意力交互
-        x= x.permute(0, 1, 3,2).reshape((22, 638 * 12, 8))
+        x= x.permute(0, 1, 3,2).reshape((batch_size, num_of_vertices * num_of_timesteps, num_of_features))
         output, _ = self.attn(x,x,x)
-        x=output.view(22, 638, 12, 8).permute(0, 1, 3, 2)
+        x=output.view(batch_size, num_of_vertices, num_of_timesteps, num_of_features)
+        x=x.permute(0, 1, 3, 2)
 
         temporal_At = self.TAt(x)  #
         # temporal_At (b, T, T) # x_TAt (b,N,F,T)

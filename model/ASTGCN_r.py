@@ -2,8 +2,9 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+from torch.nn import MultiheadAttention
 from lib.utils import scaled_Laplacian, cheb_polynomial
-
+import math
 
 class Spatial_Attention_layer(nn.Module):
     '''
@@ -178,13 +179,13 @@ class ASTGCN_block(nn.Module):
 
     def __init__(self, DEVICE, in_channels, K, nb_chev_filter, nb_time_filter, time_strides, cheb_polynomials, num_of_vertices, num_of_timesteps):
         super(ASTGCN_block, self).__init__()
-        self.TAt = Temporal_Attention_layer(DEVICE, 1, num_of_vertices, num_of_timesteps)
+        self.TAt = Temporal_Attention_layer(DEVICE, in_channels, num_of_vertices, num_of_timesteps)
         self.SAt = Spatial_Attention_layer(DEVICE, in_channels, num_of_vertices, num_of_timesteps)
         self.cheb_conv_SAt = cheb_conv_withSAt(K, cheb_polynomials, in_channels, nb_chev_filter)
         self.time_conv = nn.Conv2d(nb_chev_filter, nb_time_filter, kernel_size=(1, 3), stride=(1, time_strides), padding=(0, 1))
         self.residual_conv = nn.Conv2d(in_channels, nb_time_filter, kernel_size=(1, 1), stride=(1, time_strides))
         self.ln = nn.LayerNorm(nb_time_filter)  #需要将channel放到最后一个维度上
-
+        self.attn = MultiheadAttention(embed_dim=8, num_heads=1)
     def forward(self, x):
         '''
         :param x: (batch_size, N, F_in, T)
@@ -192,12 +193,17 @@ class ASTGCN_block(nn.Module):
         '''
         batch_size, num_of_vertices, num_of_features, num_of_timesteps = x.shape
 
-        last_feature = x[:, :, -1, :]
         # 保留维度
-        last_feature = last_feature.unsqueeze(2)
-        # TAt
-        temporal_At = self.TAt(x)  # (b, T, T)
+        # last_feature = x[:, :, -1, :]
+        # last_feature = last_feature.unsqueeze(2)
+        # # TAt
+        # 多头注意力层
+        # 注意力交互
+        x= x.permute(0, 1, 3,2).reshape((22, 638 * 12, 8))
+        output, _ = self.attn(x,x,x)
+        x=output.view(22, 638, 12, 8).permute(0, 1, 3, 2)
 
+        temporal_At = self.TAt(x)  #
         # temporal_At (b, T, T) # x_TAt (b,N,F,T)
         x_TAt = torch.matmul(x.reshape(batch_size, -1, num_of_timesteps), temporal_At).reshape(batch_size, num_of_vertices, num_of_features, num_of_timesteps)
 
@@ -287,3 +293,36 @@ def make_model(DEVICE, nb_block, in_channels, K, nb_chev_filter, nb_time_filter,
             nn.init.uniform_(p)
 
     return model
+
+
+class Dimension_attn(nn.Module):
+    def __init__(self, DEVICE, in_channels, num_of_vertices, num_of_timesteps):
+        super(Dimension_attn, self).__init__()
+        self.U1 = nn.Parameter(torch.FloatTensor(num_of_vertices).to(DEVICE))
+        self.U2 = nn.Parameter(torch.FloatTensor(in_channels, num_of_vertices).to(DEVICE))
+        self.U3 = nn.Parameter(torch.FloatTensor(in_channels).to(DEVICE))
+        self.Ve = nn.Parameter(torch.FloatTensor(num_of_timesteps, num_of_timesteps).to(DEVICE))
+
+    def forward(self, x):
+        '''
+        :param x: (batch_size, N, F_in, T)
+        :return: (B, T, T)
+        '''
+        _, num_of_vertices, num_of_features, num_of_timesteps = x.shape
+
+        lhs = torch.matmul(torch.matmul(x.permute(0, 3, 2, 1), self.U1), self.U2)
+        # x:(B, N, F_in, T) -> (B, T, F_in, N)
+        # (B, T, F_in, N)(N) -> (B,T,F_in)
+        # (B,T,F_in)(F_in,N)->(B,T,N)
+
+        rhs = torch.matmul(self.U3, x)  # (F)(B,N,F,T)->(B, N, T)
+
+        product = torch.matmul(lhs, rhs)  # (B,T,N)(B,N,T)->(B,T,T)
+
+        E = torch.matmul(self.Ve, torch.sigmoid(product + self.be))  # (B, T, T)
+
+        E_normalized = F.softmax(E, dim=1)
+
+        return E_normalized
+
+

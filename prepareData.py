@@ -97,7 +97,14 @@ def read_and_generate_dataset(graph_signal_matrix_filename,
 
  # 组织数据成多个samples
 
+
     data_seq = np.load(graph_signal_matrix_filename)['data']
+
+    # 将所有NaN替换为0
+    data_seq = np.nan_to_num(data_seq, nan=0)
+
+
+
     all_samples = []
     for idx in range(data_seq.shape[0]):
         sample = get_sample_indices(data_seq, num_of_weeks, num_of_days,
@@ -248,12 +255,12 @@ def normalization(train, val, test):
 
 # 准备数据集
 parser = argparse.ArgumentParser()
-parser.add_argument("--config", default='configurations/PEMS04_astgcn.conf', type=str,
+parser.add_argument("--config", default='configurations/PEMS08_Crossgcn.conf', type=str,
                     help="configuration file path")
 args = parser.parse_args()
 config = configparser.ConfigParser()
 print('Read configuration file: %s' % (args.config))
-config.read(args.config)
+config.read(args.config, encoding='utf-8')
 data_config = config['Data']
 training_config = config['Training']
 
@@ -278,7 +285,6 @@ points_per_hour = int(data_config['points_per_hour'])
 num_for_predict = int(data_config['num_for_predict'])
 graph_signal_matrix_filename = data_config['graph_signal_matrix_filename']
 data = np.load(graph_signal_matrix_filename)
-data['data'].shape
 
 all_data = read_and_generate_dataset(graph_signal_matrix_filename, 0, 0, num_of_hours, num_for_predict, points_per_hour=points_per_hour, save=True)
 

@@ -11,7 +11,7 @@ this is our motivation to propose the router on spatial
 the router-attention as follows:
 
 <center>
-[route_attention](./router.png)
+![route_attention](./router.png)
 </center>
 
 # Usage

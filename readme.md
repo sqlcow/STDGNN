@@ -10,7 +10,10 @@ this is our motivation to propose the router on spatial
 
 the router-attention as follows:
 
-<div align=center>![route_attention](./router.png)<div/>
+<center>
+[route_attention](./router.png)
+</center>
+
 # Usage
 + prepare data
 

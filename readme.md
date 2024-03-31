@@ -1,4 +1,5 @@
 This is the code for the paper "Cross-GCN: Traffic flow prediction based on interdimensional attention space-time model"
+![spatial_attention](./jg.jpg)
 
 # Visusalization
 to visualize the lstm-attention model, we can use the "visualization.ipynb"

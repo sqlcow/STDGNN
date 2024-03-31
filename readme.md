@@ -9,11 +9,6 @@ the spatial attention weights are sparse as follows:
 
 this is our motivation to propose the router on spatial
 
-the router-attention as follows:
-
-
-![route_attention](./router.png)
-
 
 # Usage
 + prepare data

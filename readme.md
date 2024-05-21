@@ -1,8 +1,8 @@
 This is the code for the paper "Traffic speed prediction,Routing mechanism,Spatial-temporal graph data,Graph convolution" 
 
-**Authors**: Guangyu Wang*,Junshuo Zhang*, **Ming Gao****, Zhiqiao Wu*, Bowei Chen*，Jiafu Tang*. Dongbei University of Finance and Economics, all the authors contributed equally to this work. Corresponding author: Ming Gao.
+**Authors**: Guangyu Wang\#,Junshuo Zhang\#, Ming Gao\#*, Zhiqiao Wu\#, Bowei Chen\#，Jiafu Tang\#. Dongbei University of Finance and Economics, all the authors contributed equally to this work. Corresponding author: Ming Gao.
 
-> \* Equal Contributions.
+> \*Corresponding Author .\# Equal Contributions
 
 [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/drive/1OApodP_B0BHf3_8mFl369YK-VsGGjDut#scrollTo=avX9rvt3DCee)
 

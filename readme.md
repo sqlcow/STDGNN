@@ -1,16 +1,32 @@
-This is the code for the paper "Cross-GCN: Traffic flow prediction based on interdimensional attention space-time model"
-![spatial_attention](./jg.jpg)
+This is the code for the paper "Traffic speed prediction,Routing mechanism,Spatial-temporal graph data,Graph convolution" 
 
-# Visusalization
-to visualize the lstm-attention model, we can use the "visualization.ipynb"
+**Authors**: Guangyu Wang*,Junshuo Zhang*, **Ming Gao****, Zhiqiao Wu*, Jiafu Tang*. Dongbei University of Finance and Economics, all the authors contributed equally to this work. Corresponding author: Ming Gao.
 
-the spatial attention weights are sparse as follows:    
-![spatial_attention](./heatmap.png)
+> \* Equal Contributions.
 
-this is our motivation to propose the router on spatial
+[![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/drive/1OApodP_B0BHf3_8mFl369YK-VsGGjDut#scrollTo=avX9rvt3DCee)
 
 
-# Usage
+
+# 💡 Highlights
+
++ Introducing an transformer-based spatio-temporal model framework, incorporating previous research into our framework.
+
+![论文插图1](./论文插图1.png)
+
++ We designed a CDA consisting of two modules to enhance the predictive performance of multi-dimensional information, and developed an efficient spatio-temporal routing mechanism for information transmission through a unified spatio-temporal router.
+
+![patch](./patch.png)
+
++  Explicitly considering the sparsity of spatial attention and dependencies between multi-dimensional traffic data compared to existing methods (perhaps the first to our best knowledge), further enhancing the model's predictive performance.
+
++  Experimental results on two real-world traffic flow datasets demonstrate that our STDGNN outperforms 10 baselines in terms of effectiveness.
+  \end{enumerate}
+
+  
+
+# 🔧 Usage
+
 + prepare data
 
 the PEMSD4、PEMSD7、PEMSD8、METR-LA data can be downloaded from this [google drive link](https://drive.google.com/drive/folders/13teLsvLL5M-0h36Xzjk24n1MHhQSmbCc?usp=drive_link)
@@ -20,6 +36,7 @@ to prepare the data, you can run the following command:
 ```
 python prepare_Data.py 
 ```
+
 + train the model
 
 to train the model, you can simply  run the following command:
@@ -36,8 +53,7 @@ to search the best hyperparameters, you can run the following command:
 python grid_search.py
 ```
 
-
-# Custom data
+# 🔧Custom data
 
 We also support the custom data
 
@@ -52,4 +68,6 @@ if your data is 2D, you can run the following command:
 ```
 python dataset/prepare_Data_2D.py --data_path your_data_path
 ```
+
 and then you can train the model as usual
+
